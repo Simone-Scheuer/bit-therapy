@@ -19,11 +19,41 @@
       "id": "sleep",
       "position": "fromEntityBottomLeft",
       "requiredLoops": 50
+    },
+    {
+      "id": "love",
+      "position": "fromEntityBottomLeft",
+      "requiredLoops": 3
+    },
+    {
+      "id": "angry",
+      "position": "fromEntityBottomLeft",
+      "requiredLoops": 4
+    },
+    {
+      "id": "phonecall",
+      "position": "fromEntityBottomLeft",
+      "requiredLoops": 3
+    },
+    {
+      "id": "worried",
+      "position": "fromEntityBottomLeft",
+      "requiredLoops": 3
+    },
+    {
+      "id": "hammer",
+      "position": "fromEntityBottomLeft",
+      "requiredLoops": 3
+    },
+    {
+      "id": "helmet",
+      "position": "fromEntityBottomLeft",
+      "requiredLoops": 3
     }
   ],
   "capabilities": [
       "AnimatedSprite",
-      "AnimationsProvider",
+      "CatAnimationsProvider",
       "AnimationsScheduler",
       "AutoRespawn",
       "BounceOnLateralCollisions",

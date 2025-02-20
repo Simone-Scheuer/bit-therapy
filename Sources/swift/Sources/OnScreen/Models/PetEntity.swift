@@ -43,7 +43,15 @@ class PetEntity: Entity {
     }
 
     override open func set(state: EntityState) {
+        // If it's an action state (animation), validate it first
+        if case .action(let animation, _) = state {
+            // Check if the species supports this animation
+            guard species.animations.contains(where: { $0.id == animation.id }) else { return }
+        }
+        
         super.set(state: state)
+        
+        // Reset speed when changing state (unless it's an animation)
         if case .move = state { resetSpeed() }
     }
 
@@ -105,5 +113,33 @@ extension PetEntity {
     static func speedMultiplier(for size: CGFloat) -> CGFloat {
         let sizeRatio = size / PetSize.defaultSize
         return baseSpeed * sizeRatio
+    }
+}
+
+// MARK: - Animations
+
+extension PetEntity {
+    func availableAnimations() -> [PetAnimation] {
+        // Get standard animations based on what the species supports
+        let standardAnimations = PetAnimation.all.filter { animation in
+            // Check if the animation exists in the species animations
+            animation.id != "raincloud" && species.animations.contains { $0.id == animation.id }
+        }
+        
+        // Always add the rain cloud as it's a special effect that works on all pets
+        return standardAnimations + [PetAnimation.rainCloud]
+    }
+    
+    func resetState() {
+        // Return to idle or walking state
+        set(state: .move)
+    }
+    
+    func playAnimation(_ animationId: String, loops: Int = 5) {
+        if let animation = species.animations.first(where: { $0.id == animationId }) {
+            // Use the animation's required loops if specified, otherwise use the provided loops
+            let loopCount = animation.requiredLoops ?? loops
+            set(state: .action(action: animation, loops: loopCount))
+        }
     }
 }

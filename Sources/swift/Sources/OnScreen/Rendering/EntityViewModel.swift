@@ -142,3 +142,56 @@ private extension EntityViewModel {
         )
     }
 }
+
+// MARK: - Pet Interactions
+
+extension EntityViewModel {
+    func handleDoubleClick() {
+        // Trigger front animation (usually a sitting/facing pose)
+        if let petEntity = entity as? PetEntity {
+            petEntity.playAnimation("front", loops: 8)  // Use more loops for longer animation
+            
+            // Show heart effect (you would need to implement this in the UI)
+            showHeartEffect()
+            
+            // Reset to normal state after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak petEntity] in
+                petEntity?.resetState()
+            }
+        }
+    }
+    
+    private func showHeartEffect() {
+        // TODO: Implement heart effect animation
+    }
+    
+    private func addAnimationMenuItems(to menu: NSMenu) {
+        // Get available animations from the entity
+        if let petEntity = entity as? PetEntity {
+            let animations = petEntity.availableAnimations()
+            
+            for animation in animations {
+                let item = NSMenuItem(
+                    title: animation.displayName,
+                    action: #selector(handleMenuAnimation(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = animation.id
+                menu.addItem(item)
+            }
+        }
+    }
+    
+    @objc private func handleMenuAnimation(_ sender: NSMenuItem) {
+        guard let animationId = sender.representedObject as? String,
+              let petEntity = entity as? PetEntity else { return }
+        
+        petEntity.playAnimation(animationId, loops: 10)  // Use more loops for longer animation
+        
+        // Reset to normal state after animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak petEntity] in
+            petEntity?.resetState()
+        }
+    }
+}

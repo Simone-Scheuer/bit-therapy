@@ -240,7 +240,6 @@
 		1E77BF122D293A6900AA14EC /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Environments/iOS/OnScreenCoordinatorImpl.swift,
 				Rendering/iOS/ImageManipulation.swift,
 			);
 			target = 1E9505B029B21341007666BF /* BitTherapy */;
@@ -248,7 +247,6 @@
 		1E77BF132D293A6900AA14EC /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Environments/macOS/OnScreenCoordinatorImpl.swift,
 				Rendering/macOS/ImageManupilation.swift,
 				Rendering/macOS/PixelArtEntityView.swift,
 				Rendering/macOS/WorldWindow.swift,
@@ -1228,7 +1226,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 206201;
-				DEVELOPMENT_TEAM = 9L5V9XNS25;
+				DEVELOPMENT_TEAM = RFN4QJX8V3;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -1265,7 +1263,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 206201;
-				DEVELOPMENT_TEAM = 9L5V9XNS25;
+				DEVELOPMENT_TEAM = RFN4QJX8V3;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;

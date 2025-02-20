@@ -16,8 +16,17 @@ protocol RainyCloudUseCase {
 }
 
 class RainyCloudUseCaseImpl: RainyCloudUseCase {
+    private var currentCloud: Entity?
+
     func start(target: Entity, world: World) {
+        // If there's already a cloud, remove it first
+        if let existingCloud = currentCloud {
+            existingCloud.kill()
+            world.children.remove(existingCloud)
+        }
+
         let cloud = buildCloud(at: target.frame.origin, in: world)
+        currentCloud = cloud
         setupSeeker(for: cloud, to: target)
         scheduleCleanUp(cloud: cloud, world: world)
     }
@@ -47,10 +56,15 @@ class RainyCloudUseCaseImpl: RainyCloudUseCase {
     }
 
     private func scheduleCleanUp(cloud: Entity, world: World) {
-        let duracy = TimeInterval.random(in: 60 ..< 120)
-        DispatchQueue.main.asyncAfter(deadline: .now() + duracy) { [weak world] in
+        // For manual triggering, use a fixed duration of 30 seconds
+        let duration: TimeInterval = 30
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self, weak world, weak cloud] in
+            guard let cloud = cloud else { return }
             cloud.kill()
             world?.children.remove(cloud)
+            if let self = self, self.currentCloud === cloud {
+                self.currentCloud = nil
+            }
         }
     }
 }

@@ -19,6 +19,11 @@ class PixelArtEntityView: NSImageView, EntityView {
         bindFrame()
         bindImage()
         bindLifecycle()
+        
+        // Add double-click gesture recognizer
+        let doubleClickGesture = NSClickGestureRecognizer(target: self, action: #selector(handleDoubleClick(_:)))
+        doubleClickGesture.numberOfClicksRequired = 2
+        addGestureRecognizer(doubleClickGesture)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -83,5 +88,9 @@ class PixelArtEntityView: NSImageView, EntityView {
                 self.image = nil
             }
             .store(in: &disposables)
+    }
+
+    @objc private func handleDoubleClick(_ gesture: NSClickGestureRecognizer) {
+        viewModel.handleDoubleClick()
     }
 }

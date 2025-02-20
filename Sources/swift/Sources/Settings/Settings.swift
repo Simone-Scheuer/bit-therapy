@@ -116,26 +116,31 @@ struct BounceOffOtherPets: View {
 
 struct SizeControl: View {
     @EnvironmentObject var appConfig: AppConfig
-
-    @State var text: String = ""
-
-    var formattedValue: String {
-        "\(Int(appConfig.petSize))"
-    }
-
+    
     var body: some View {
-        HStack {
-            Text(Lang.Settings.size)
-                .textAlign(.leading)
-            TextField(formattedValue, text: $text)
-                .frame(width: 100)
-                .textFieldStyle(.roundedBorder)
-        }
-        .onChange(of: text) { newText in
-            guard let value = Float(newText) else { return }
-            let newSize = max(min(CGFloat(value), PetSize.maxSize), PetSize.minSize)
-            guard appConfig.petSize != newSize else { return }
-            appConfig.petSize = newSize
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(Lang.Settings.size)
+                    .textAlign(.leading)
+                Spacer()
+                Text("\(Int(appConfig.petSize))")
+                    .monospacedDigit()
+                    .frame(width: 50)
+            }
+            
+            Slider(
+                value: $appConfig.petSize,
+                in: PetSize.minSize...PetSize.maxSize,
+                step: 5
+            ) {
+                Text(Lang.Settings.size)
+            } minimumValueLabel: {
+                Text("\(Int(PetSize.minSize))")
+                    .font(.caption)
+            } maximumValueLabel: {
+                Text("\(Int(PetSize.maxSize))")
+                    .font(.caption)
+            }
         }
     }
 }
@@ -144,27 +149,31 @@ struct SizeControl: View {
 
 struct SpeedControl: View {
     @EnvironmentObject var appConfig: AppConfig
-
-    @State var text: String = ""
-
-    var formattedValue: String {
-        "\(Int(appConfig.speedMultiplier * 100))%"
-    }
-
+    
     var body: some View {
-        HStack {
-            Text(Lang.Settings.speed)
-                .textAlign(.leading)
-            TextField(formattedValue, text: $text)
-                .frame(width: 100)
-                .textFieldStyle(.roundedBorder)
-        }
-        .onChange(of: text) { newText in
-            guard let value = Int(newText) else { return }
-            let newSpeed = CGFloat(value) / 100
-            guard appConfig.speedMultiplier != newSpeed else { return }
-            guard newSpeed >= 0 && newSpeed <= 3 else { return }
-            appConfig.speedMultiplier = newSpeed
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(Lang.Settings.speed)
+                    .textAlign(.leading)
+                Spacer()
+                Text("\(Int(appConfig.speedMultiplier * 100))%")
+                    .monospacedDigit()
+                    .frame(width: 50)
+            }
+            
+            Slider(
+                value: $appConfig.speedMultiplier,
+                in: 0.25...3,
+                step: 0.25
+            ) {
+                Text(Lang.Settings.speed)
+            } minimumValueLabel: {
+                Text("25%")
+                    .font(.caption)
+            } maximumValueLabel: {
+                Text("300%")
+                    .font(.caption)
+            }
         }
     }
 }

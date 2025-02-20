@@ -23,7 +23,7 @@
   ],
   "capabilities": [
       "AnimatedSprite",
-      "AnimationsProvider",
+      "CatAnimationsProvider",
       "AnimationsScheduler",
       "AutoRespawn",
       "BounceOnLateralCollisions",

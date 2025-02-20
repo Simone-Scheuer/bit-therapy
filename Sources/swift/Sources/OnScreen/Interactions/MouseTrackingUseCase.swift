@@ -13,7 +13,7 @@ protocol MouseTrackingUseCase {
 
     class MouseTrackingUseCaseImpl: MouseTrackingUseCase {
         private let latestMousePosition = CurrentValueSubject<CGPoint?, Never>(nil)
-        private let interval: TimeInterval = 0.5
+        private let interval: TimeInterval = 1.0/60.0  // 60 FPS update rate
         private var timer: Timer!
 
         init() {}
@@ -21,6 +21,8 @@ protocol MouseTrackingUseCase {
         func start() {
             timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.update() }
             RunLoop.current.add(timer, forMode: .common)
+            // Initial update
+            update()
         }
 
         func stop() {

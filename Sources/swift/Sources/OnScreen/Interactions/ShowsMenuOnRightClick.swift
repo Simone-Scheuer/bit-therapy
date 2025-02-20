@@ -1,37 +1,186 @@
 import Schwifty
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
-class RightClickable: Capability {
+protocol RightClickable: Capability {
+    func onRightClick(from window: SomeWindow?, at point: CGPoint)
+}
+
+extension RightClickable {
+    func onRightClick(from window: SomeWindow?, at point: CGPoint) {
+        // Default empty implementation
+    }
+}
+
+class BaseRightClickable: Capability, RightClickable {
     override func install(on subject: Entity) {
         super.install(on: subject)
         isEnabled = !subject.isEphemeral
     }
-
+    
     func onRightClick(from window: SomeWindow?, at point: CGPoint) {
-        // ...
+        // Base implementation
     }
 }
 
 extension Entity {
-    var rightClick: RightClickable? { capability(for: RightClickable.self) }
+    var rightClick: RightClickable? { capability(for: BaseRightClickable.self) }
 }
 
 #if os(macOS)
-    class ShowsMenuOnRightClick: RightClickable {
+    class ShowsMenuOnRightClick: BaseRightClickable {
         @Inject private var onScreen: OnScreenCoordinator
-
+        @Inject private var rainyCloudUseCase: RainyCloudUseCase
+        @Inject private var speciesNames: SpeciesNamesRepository
         private weak var lastWindow: SomeWindow?
+        private var isMenuOpen = false
+        private var previousState: EntityState?
+        private var previousPosition: CGPoint?
+        private var previousSpeed: CGFloat?
+
+        override func install(on subject: Entity) {
+            super.install(on: subject)
+            isEnabled = !subject.isEphemeral
+        }
 
         override func onRightClick(from window: SomeWindow?, at point: CGPoint) {
             lastWindow = window
-            lastWindow?.contentView?.menu = petMenu()
+            isMenuOpen = true
+            
+            // Store current state and position
+            if let petEntity = subject as? PetEntity {
+                previousState = petEntity.state
+                previousPosition = petEntity.frame.origin
+                previousSpeed = petEntity.speed
+                
+                // Lock in place with front animation
+                petEntity.speed = 0
+                if let movement = petEntity.movement {
+                    movement.isEnabled = false
+                }
+                petEntity.setGravity(enabled: false)
+                
+                // Show front animation with high loop count to persist while menu is open
+                if let frontAnimation = petEntity.species.animations.first(where: { $0.id == "front" }) {
+                    petEntity.set(state: .action(action: frontAnimation, loops: 100))
+                }
+                
+                // Disable animation scheduler to prevent random animations
+                petEntity.capability(for: AnimationsScheduler.self)?.isEnabled = false
+            }
+            
+            let menu = petMenu()
+            menu.delegate = menuDelegate
+            
+            // Show the menu at the clicked location
+            if let window = window as? NSWindow {
+                let event = NSEvent.mouseEvent(
+                    with: .rightMouseUp,
+                    location: point,
+                    modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                )
+                if let event = event {
+                    NSMenu.popUpContextMenu(menu, with: event, for: window.contentView ?? NSView())
+                }
+            }
         }
 
+        // MARK: - Menu Creation
+        private lazy var menuDelegate: MenuDelegate = {
+            let delegate = MenuDelegate()
+            delegate.onMenuClose = { [weak self] in
+                guard let self = self else { return }
+                self.isMenuOpen = false
+                
+                // Restore previous state and position
+                if let petEntity = self.subject as? PetEntity {
+                    if let position = self.previousPosition {
+                        petEntity.frame.origin = position
+                    }
+                    if let speed = self.previousSpeed {
+                        petEntity.speed = speed
+                    }
+                    if let movement = petEntity.movement {
+                        movement.isEnabled = true
+                    }
+                    petEntity.setGravity(enabled: true)
+                    
+                    // Re-enable animation scheduler
+                    petEntity.capability(for: AnimationsScheduler.self)?.isEnabled = true
+                    
+                    // Only restore previous state if it wasn't an action
+                    if case .move = self.previousState {
+                        petEntity.set(state: self.previousState ?? .move)
+                    } else {
+                        petEntity.set(state: .move)
+                    }
+                }
+                
+                // Clear stored states
+                self.previousState = nil
+                self.previousPosition = nil
+                self.previousSpeed = nil
+            }
+            delegate.rainyCloudUseCase = rainyCloudUseCase
+            return delegate
+        }()
+
         private func petMenu() -> NSMenu {
-            let menu = NSMenu(title: "MainMenu")
-            menu.addItem(followMouseItem())
+            let menu = NSMenu(title: "PetMenu")
+            menu.delegate = menuDelegate
+            
+            // Add pet name as a header (disabled item)
+            if let petEntity = subject as? PetEntity {
+                let petName = speciesNames.currentName(forSpecies: petEntity.species.id)
+                let nameItem = NSMenuItem(title: petName, action: nil, keyEquivalent: "")
+                nameItem.isEnabled = false
+                nameItem.attributedTitle = NSAttributedString(
+                    string: petName,
+                    attributes: [
+                        .font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize),
+                        .foregroundColor: NSColor.secondaryLabelColor
+                    ]
+                )
+                menu.addItem(nameItem)
+                menu.addItem(.separator())
+                
+                // Add animations submenu
+                let animationsMenu = NSMenu()
+                animationsMenu.delegate = menuDelegate  // Set delegate for submenu
+                let animationsItem = NSMenuItem(title: "Animations", action: nil, keyEquivalent: "")
+                menu.addItem(animationsItem)
+                menu.setSubmenu(animationsMenu, for: animationsItem)
+                
+                // Add available animations
+                for animation in petEntity.availableAnimations() {
+                    let item = NSMenuItem(
+                        title: animation.displayName,
+                        action: #selector(MenuDelegate.triggerAnimation(_:)),
+                        keyEquivalent: ""
+                    )
+                    item.target = menuDelegate
+                    item.representedObject = (animation.id, petEntity)
+                    animationsMenu.addItem(item)
+                }
+                
+                // Add mouse following toggle for this specific pet
+                menu.addItem(.separator())
+                menu.addItem(followMouseItem(for: petEntity))
+            }
+            
+            // Add general menu items
+            menu.addItem(.separator())
             menu.addItem(showHomeItem())
             menu.addItem(hideAllPetsItem())
+            
             return menu
         }
 
@@ -41,38 +190,129 @@ extension Entity {
                 action: action,
                 keyEquivalent: ""
             )
-            item.target = self
+            item.target = menuDelegate
             return item
         }
 
         private func showHomeItem() -> NSMenuItem {
-            item(title: "home", action: #selector(showHome))
-        }
-
-        @objc func showHome() {
-            MainScene.show()
+            item(title: "home", action: #selector(MenuDelegate.showHome))
         }
 
         private func hideAllPetsItem() -> NSMenuItem {
-            item(title: "hideAllPet", action: #selector(hideAllPets))
+            let item = item(title: "hideAllPet", action: #selector(MenuDelegate.hideAllPets))
+            menuDelegate.onScreenCoordinator = onScreen
+            return item
         }
 
+        private func followMouseItem(for petEntity: PetEntity) -> NSMenuItem {
+            let isFollowingMouse = petEntity.capability(for: MouseChaser.self) != nil
+            let title = isFollowingMouse ? "Stop Following Mouse" : "Follow Mouse"
+            let item = NSMenuItem(
+                title: title,
+                action: #selector(MenuDelegate.toggleFollowMouse(_:)),
+                keyEquivalent: ""
+            )
+            item.target = menuDelegate
+            item.representedObject = ("", petEntity)
+            return item
+        }
+    }
+
+    // MARK: - Menu Delegate
+    private class MenuDelegate: NSObject, NSMenuDelegate {
+        var onMenuClose: (() -> Void)?
+        var onScreenCoordinator: OnScreenCoordinator?
+        var rainyCloudUseCase: RainyCloudUseCase?
+        private var isSubMenuOpen = false
+        
+        func menuWillOpen(_ menu: NSMenu) {
+            // Keep the front animation going when opening submenus
+            isSubMenuOpen = true
+        }
+        
+        func menuDidClose(_ menu: NSMenu) {
+            // Only trigger the close handler if this is the main menu closing
+            // and no submenu is open
+            if !isSubMenuOpen {
+                onMenuClose?()
+            }
+            isSubMenuOpen = false
+        }
+        
+        @objc func showHome() {
+            MainScene.show()
+        }
+        
         @objc func hideAllPets() {
-            onScreen.hide()
+            onScreenCoordinator?.hide()
         }
-
-        private func followMouseItem() -> NSMenuItem {
-            item(title: "followMouse", action: #selector(toggleFollowMouse))
-        }
-
-        @objc func toggleFollowMouse() {
-            if let mouseChaser = subject?.capability(for: MouseChaser.self) {
+        
+        @objc func toggleFollowMouse(_ sender: NSMenuItem) {
+            guard let (_, petEntity) = sender.representedObject as? (String, PetEntity) else { return }
+            
+            if let mouseChaser = petEntity.capability(for: MouseChaser.self) {
+                // If we're disabling mouse chasing, make sure to restore movement
                 mouseChaser.kill()
+                if let movement = petEntity.movement {
+                    movement.isEnabled = true
+                }
+                petEntity.resetState()
+                petEntity.resetSpeed()
             } else {
-                subject?.install(MouseChaser())
+                // If we're enabling mouse chasing, let the MouseChaser handle movement
+                let chaser = MouseChaser()
+                petEntity.install(chaser)
+            }
+            
+            // Update the menu item title
+            if let menuItem = sender.menu?.items.first(where: { $0.action == #selector(toggleFollowMouse(_:)) }) {
+                menuItem.title = petEntity.capability(for: MouseChaser.self) != nil ? 
+                    "Stop Following Mouse" : "Follow Mouse"
+            }
+        }
+        
+        @objc func triggerAnimation(_ sender: NSMenuItem) {
+            guard let (animationId, petEntity) = sender.representedObject as? (String, PetEntity) else { return }
+            
+            if animationId == "raincloud" {
+                // Special handling for rain cloud
+                guard let world = petEntity.world else { return }
+                rainyCloudUseCase?.start(target: petEntity, world: world)
+                return
+            }
+            
+            // For sleep animation, use more loops and longer duration
+            let loops = animationId == "sleep" ? 15 : 10
+            let duration = animationId == "sleep" ? 7.0 : 5.0
+            
+            // Store current position and state
+            let currentPosition = petEntity.frame.origin
+            let currentSpeed = petEntity.speed
+            
+            // Keep collision detection enabled but disable movement
+            if let movement = petEntity.movement {
+                movement.isEnabled = false
+            }
+            petEntity.speed = 0
+            
+            // Play the animation
+            petEntity.set(state: .action(action: .init(id: animationId), loops: loops))
+            
+            // Ensure the pet stays at its current position
+            petEntity.frame.origin = currentPosition
+            
+            // Reset to normal state after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak petEntity] in
+                guard let petEntity = petEntity else { return }
+                if let movement = petEntity.movement {
+                    movement.isEnabled = true
+                }
+                petEntity.frame.origin = currentPosition
+                petEntity.resetState()
+                petEntity.speed = currentSpeed
             }
         }
     }
 #else
-    class ShowsMenuOnRightClick: RightClickable {}
+    class ShowsMenuOnRightClick: BaseRightClickable {}
 #endif

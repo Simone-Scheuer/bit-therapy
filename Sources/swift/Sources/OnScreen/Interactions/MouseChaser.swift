@@ -16,6 +16,10 @@ class MouseChaser: Capability {
         subject.capability(for: AnimationsScheduler.self)?.isEnabled = false
         subject.capability(for: RandomPlatformJumper.self)?.isEnabled = false
         subject.setGravity(enabled: false)
+        if let petEntity = subject as? PetEntity {
+            petEntity.resetSpeed()
+            subject.speed = subject.speed * 1.5  // Increase speed for better following
+        }
         startSeeker()
         mouse.position()
             .sink { [weak self] in self?.positionChanged(to: $0) }
@@ -28,31 +32,37 @@ class MouseChaser: Capability {
         seeker.follow(
             mousePosition,
             to: .center,
-            autoAdjustSpeed: false,
-            minDistance: 20,
-            maxDistance: 60
+            autoAdjustSpeed: true,
+            minDistance: 20,  // Increased minimum distance to maintain gap
+            maxDistance: 60   // Increased maximum distance for smoother following
         ) { [weak self] in self?.handleCapture(state: $0) }
     }
 
     private func handleCapture(state: Seeker.State) {
         switch state {
-        case .captured: playIdleAnimation()
-        case .escaped: startMoving()
-        case .following: break
+        case .captured:
+            // Keep current direction when near the mouse
+            if subject?.state != .action(action: .init(id: "idle"), loops: 100) {
+                if let animation = subject?.species.animations.first(where: { $0.id == "idle" }) {
+                    subject?.set(state: .action(action: animation, loops: 100))
+                }
+            }
+            subject?.movement?.isEnabled = true
+        case .escaped, .following:
+            // Update direction only when significantly far from target
+            if case .action = subject?.state {
+                subject?.set(state: .move)
+            }
+            subject?.movement?.isEnabled = true
+            
+            // Update direction smoothly to face the mouse
+            if let subject = subject {
+                let targetPos = mousePosition.frame.origin
+                let currentPos = subject.frame.origin
+                let angle = atan2(targetPos.y - currentPos.y, targetPos.x - currentPos.x)
+                subject.direction = CGVector(dx: cos(angle), dy: sin(angle))
+            }
         }
-    }
-
-    private func startMoving() {
-        guard let subject else { return }
-        subject.set(state: .move)
-        subject.direction = CGVector(dx: 1, dy: 0)
-        subject.movement?.isEnabled = true
-    }
-
-    private func playIdleAnimation() {
-        let animation = subject?.species.animations.first { $0.id == "front" }
-        guard let animation else { return }
-        subject?.animationsScheduler?.load(animation, times: 100)
     }
 
     private func positionChanged(to point: CGPoint) {
@@ -68,6 +78,9 @@ class MouseChaser: Capability {
         subject?.set(state: .move)
         subject?.direction = CGVector(dx: 1, dy: 0)
         subject?.movement?.isEnabled = true
+        if let petEntity = subject as? PetEntity {
+            petEntity.resetSpeed()
+        }
         disposables.removeAll()
         super.kill(autoremove: autoremove)
     }
