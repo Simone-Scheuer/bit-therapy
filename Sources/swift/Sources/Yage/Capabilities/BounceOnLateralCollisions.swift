@@ -23,7 +23,7 @@ public class BounceOnLateralCollisions: Capability {
         
         // If there's a collision, slightly adjust position to prevent overlap
         for collision in validCollisions where collision.isOverlapping {
-            let overlap = collision.intersection
+            let _ = collision.intersection  // Using underscore to explicitly ignore
             let adjustment: CGFloat = 5.0 // Small adjustment to prevent overlap
             
             // Calculate the adjustment direction based on relative positions

@@ -63,7 +63,8 @@
       "LinearMovement",
       "PetsSpritesProvider",
       "Rotating",
-      "ShowsMenuOnRightClick"
+      "ShowsMenuOnRightClick",
+      "WallWalker"
   ],
   "dragPath": "drag",
   "fps": 10,

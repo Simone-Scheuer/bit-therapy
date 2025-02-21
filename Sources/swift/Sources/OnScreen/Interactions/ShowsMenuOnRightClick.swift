@@ -75,20 +75,20 @@ extension Entity {
             menu.delegate = menuDelegate
             
             // Show the menu at the clicked location
-            if let window = window as? NSWindow {
+            if let nsWindow = window as? NSWindow {
                 let event = NSEvent.mouseEvent(
                     with: .rightMouseUp,
                     location: point,
                     modifierFlags: [],
                     timestamp: ProcessInfo.processInfo.systemUptime,
-                    windowNumber: window.windowNumber,
+                    windowNumber: nsWindow.windowNumber,
                     context: nil,
                     eventNumber: 0,
                     clickCount: 1,
                     pressure: 1
                 )
                 if let event = event {
-                    NSMenu.popUpContextMenu(menu, with: event, for: window.contentView ?? NSView())
+                    NSMenu.popUpContextMenu(menu, with: event, for: nsWindow.contentView ?? NSView())
                 }
             }
         }
@@ -139,6 +139,32 @@ extension Entity {
             
             // Add pet name as a header (disabled item)
             if let petEntity = subject as? PetEntity {
+                // Set menu appearance based on cat type
+                #if os(macOS)
+                // Make menu transparent
+                menu.appearance = NSAppearance(named: .aqua)
+                
+                // Define colors based on cat type
+                let (backgroundColor, nameColor): (NSColor, NSColor)
+                switch petEntity.species.id {
+                case "cat_strawberry":
+                    backgroundColor = NSColor(red: 1.0, green: 0.8, blue: 0.9, alpha: 0.15)  // More transparent pink
+                    nameColor = NSColor(red: 0.9, green: 0.4, blue: 0.6, alpha: 0.9)
+                case "cat_blue":
+                    backgroundColor = NSColor(red: 0.8, green: 0.9, blue: 1.0, alpha: 0.15)  // More transparent blue
+                    nameColor = NSColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 0.9)
+                default:
+                    backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.15)
+                    nameColor = NSColor.secondaryLabelColor
+                }
+                
+                // Apply background color to menu
+                menu.items.forEach { item in
+                    item.view?.wantsLayer = true
+                    item.view?.layer?.backgroundColor = backgroundColor.cgColor
+                }
+                #endif
+                
                 let petName = speciesNames.currentName(forSpecies: petEntity.species.id)
                 let nameItem = NSMenuItem(title: petName, action: nil, keyEquivalent: "")
                 nameItem.isEnabled = false
@@ -146,15 +172,24 @@ extension Entity {
                     string: petName,
                     attributes: [
                         .font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize),
-                        .foregroundColor: NSColor.secondaryLabelColor
+                        .foregroundColor: nameColor
                     ]
                 )
                 menu.addItem(nameItem)
                 menu.addItem(.separator())
                 
-                // Add animations submenu
+                // Add animations submenu with matching style
                 let animationsMenu = NSMenu()
-                animationsMenu.delegate = menuDelegate  // Set delegate for submenu
+                animationsMenu.delegate = menuDelegate
+                #if os(macOS)
+                animationsMenu.appearance = menu.appearance
+                // Apply same transparency to submenu
+                animationsMenu.items.forEach { item in
+                    item.view?.wantsLayer = true
+                    item.view?.layer?.backgroundColor = backgroundColor.cgColor
+                }
+                #endif
+                
                 let animationsItem = NSMenuItem(title: "Animations", action: nil, keyEquivalent: "")
                 menu.addItem(animationsItem)
                 menu.setSubmenu(animationsMenu, for: animationsItem)
@@ -174,6 +209,9 @@ extension Entity {
                 // Add mouse following toggle for this specific pet
                 menu.addItem(.separator())
                 menu.addItem(followMouseItem(for: petEntity))
+                
+                // Add wall walking toggle
+                menu.addItem(wallWalkingItem(for: petEntity))
             }
             
             // Add general menu items
@@ -216,6 +254,24 @@ extension Entity {
             item.representedObject = ("", petEntity)
             return item
         }
+
+        private func wallWalkingItem(for petEntity: PetEntity) -> NSMenuItem {
+            // Create wall walker capability if it doesn't exist
+            if petEntity.wallWalker == nil {
+                petEntity.install(WallWalker())
+            }
+            
+            let isWallWalkingEnabled = petEntity.wallWalker?.isWallWalkingEnabled ?? false
+            let title = isWallWalkingEnabled ? "Disable Wall Walking" : "Enable Wall Walking"
+            let item = NSMenuItem(
+                title: title,
+                action: #selector(MenuDelegate.toggleWallWalking(_:)),
+                keyEquivalent: ""
+            )
+            item.target = menuDelegate
+            item.representedObject = ("", petEntity)
+            return item
+        }
     }
 
     // MARK: - Menu Delegate
@@ -249,6 +305,11 @@ extension Entity {
         
         @objc func toggleFollowMouse(_ sender: NSMenuItem) {
             guard let (_, petEntity) = sender.representedObject as? (String, PetEntity) else { return }
+            
+            // Disable wall walking if it's enabled
+            if let wallWalker = petEntity.wallWalker, wallWalker.isWallWalkingEnabled {
+                wallWalker.toggleWallWalking()
+            }
             
             if let mouseChaser = petEntity.capability(for: MouseChaser.self) {
                 // If we're disabling mouse chasing, make sure to restore movement
@@ -310,6 +371,33 @@ extension Entity {
                 petEntity.frame.origin = currentPosition
                 petEntity.resetState()
                 petEntity.speed = currentSpeed
+            }
+        }
+        
+        @objc func toggleWallWalking(_ sender: NSMenuItem) {
+            guard let (_, petEntity) = sender.representedObject as? (String, PetEntity) else { return }
+            
+            // Disable mouse chasing if it's enabled
+            if let mouseChaser = petEntity.capability(for: MouseChaser.self) {
+                mouseChaser.kill()
+            }
+            
+            // Create wall walker if it doesn't exist
+            if petEntity.wallWalker == nil {
+                petEntity.install(WallWalker())
+            }
+            
+            petEntity.wallWalker?.toggleWallWalking()
+            
+            // Update the menu item title
+            if let menuItem = sender.menu?.items.first(where: { $0.action == #selector(toggleWallWalking(_:)) }) {
+                menuItem.title = (petEntity.wallWalker?.isWallWalkingEnabled ?? false) ? 
+                    "Disable Wall Walking" : "Enable Wall Walking"
+            }
+            
+            // Update mouse following menu item if it exists
+            if let mouseItem = sender.menu?.items.first(where: { $0.action == #selector(toggleFollowMouse(_:)) }) {
+                mouseItem.title = "Follow Mouse"
             }
         }
     }

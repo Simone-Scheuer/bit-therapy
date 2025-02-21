@@ -56,11 +56,32 @@ class PetEntity: Entity {
     }
 
     public func resetSpeed() {
-        speed = PetEntity.speed(
+        // Base speed calculation
+        let baseSpeed = PetEntity.speed(
             for: species,
             size: frame.width,
             settings: settings.speedMultiplier
         )
+        
+        // Add slight random variation (-10% to +10%)
+        let randomVariation = CGFloat.random(in: 0.9...1.1)
+        speed = baseSpeed * randomVariation
+        
+        // Occasionally (5% chance) give them a burst of speed
+        if Double.random(in: 0...1) < 0.05 {
+            applySpeedBurst()
+        }
+    }
+    
+    private func applySpeedBurst() {
+        // Double the speed temporarily
+        speed *= 2
+        
+        // Reset speed after a random duration (1-3 seconds)
+        let duration = Double.random(in: 1...3)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            self?.resetSpeed()
+        }
     }
 
     func setInitialPosition() {
