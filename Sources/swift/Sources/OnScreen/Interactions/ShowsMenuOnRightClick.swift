@@ -102,50 +102,36 @@ extension Entity {
                 
                 // Restore previous state and position
                 if let petEntity = self.subject as? PetEntity {
-                    // First restore position and speed
                     if let position = self.previousPosition {
                         petEntity.frame.origin = position
                     }
                     if let speed = self.previousSpeed {
                         petEntity.speed = speed
                     }
+                    if let movement = petEntity.movement {
+                        movement.isEnabled = true
+                    }
+                    petEntity.setGravity(enabled: true)
                     
-                    // Re-enable movement and gravity based on current mode
-                    let isWallWalking = petEntity.wallWalker?.isWallWalkingEnabled ?? false
+                    // Re-enable animation scheduler only if not wall walking
+                    if petEntity.wallWalker?.isWallWalkingEnabled != true {
+                        if let scheduler = petEntity.capability(for: AnimationsScheduler.self) {
+                            scheduler.isEnabled = true
+                            // Schedule next animation immediately to restore behavior
+                            scheduler.animateNow()
+                        }
+                    }
                     
-                    if isWallWalking {
-                        // If wall walking, only enable movement
-                        if let movement = petEntity.movement {
-                            movement.isEnabled = true
-                        }
-                        petEntity.setGravity(enabled: false)
-                        
-                        // Return to wall walking state
-                        petEntity.set(state: .move)
-                        // Start falling to trigger wall walking behavior
-                        petEntity.set(state: .freeFall)
-                        
-                        // Keep animations scheduler disabled during wall walking
-                        petEntity.capability(for: AnimationsScheduler.self)?.isEnabled = false
-                    } else if petEntity.capability(for: MouseChaser.self) != nil {
-                        // If following mouse, make sure movement is disabled
-                        petEntity.movement?.isEnabled = false
-                        petEntity.setGravity(enabled: false)
-                        // Keep animations scheduler disabled during mouse chasing
-                        petEntity.capability(for: AnimationsScheduler.self)?.isEnabled = false
-                        // The MouseChaser's update loop will handle the rest
-                    } else {
-                        // If in normal mode, enable both movement and gravity
-                        if let movement = petEntity.movement {
-                            movement.isEnabled = true
-                        }
-                        petEntity.setGravity(enabled: true)
-                        
-                        // Re-enable animation scheduler in normal mode
-                        petEntity.capability(for: AnimationsScheduler.self)?.isEnabled = true
-                        
-                        // Restore previous state or default to move
+                    // Only restore previous state if it wasn't an action
+                    if case .move = self.previousState {
                         petEntity.set(state: self.previousState ?? .move)
+                        // Set random direction when returning to move state
+                        let randomDirection = [-1.0, 1.0].randomElement() ?? 1.0
+                        petEntity.direction = CGVector(dx: randomDirection, dy: 0)
+                    } else {
+                        petEntity.set(state: .move)
+                        let randomDirection = [-1.0, 1.0].randomElement() ?? 1.0
+                        petEntity.direction = CGVector(dx: randomDirection, dy: 0)
                     }
                 }
                 
@@ -243,9 +229,6 @@ extension Entity {
                 
                 // Add wall walking toggle
                 menu.addItem(wallWalkingItem(for: petEntity))
-
-                // Add sleep mode toggle
-                menu.addItem(sleepModeItem(for: petEntity))
             }
             
             // Add general menu items
@@ -319,19 +302,6 @@ extension Entity {
                 item.submenu = submenu
             }
             
-            return item
-        }
-
-        private func sleepModeItem(for petEntity: PetEntity) -> NSMenuItem {
-            let isSleeping = petEntity.state == .action(action: .init(id: "sleep"), loops: Int.max)
-            let title = isSleeping ? "Wake Up" : "Sleep Mode"
-            let item = NSMenuItem(
-                title: title,
-                action: #selector(MenuDelegate.toggleSleepMode(_:)),
-                keyEquivalent: ""
-            )
-            item.target = menuDelegate
-            item.representedObject = ("", petEntity)
             return item
         }
     }
@@ -449,16 +419,11 @@ extension Entity {
                 petEntity.install(WallWalker())
             }
             
-            // Toggle wall walking
             petEntity.wallWalker?.toggleWallWalking()
-            
-            // Manage animation scheduler based on wall walking state
-            let isWallWalkingEnabled = petEntity.wallWalker?.isWallWalkingEnabled ?? false
-            petEntity.capability(for: AnimationsScheduler.self)?.isEnabled = !isWallWalkingEnabled
             
             // Update the menu item title
             if let menuItem = sender.menu?.items.first(where: { $0.action == #selector(toggleWallWalking(_:)) }) {
-                menuItem.title = isWallWalkingEnabled ? 
+                menuItem.title = (petEntity.wallWalker?.isWallWalkingEnabled ?? false) ? 
                     "Disable Wall Walking" : "Enable Wall Walking"
             }
             
@@ -475,52 +440,6 @@ extension Entity {
             
             // Update the menu item title
             sender.title = petEntity.wallWalker?.cornerTraversalMenuTitle ?? "Toggle Corner Traversal"
-        }
-
-        @objc func toggleSleepMode(_ sender: NSMenuItem) {
-            guard let (_, petEntity) = sender.representedObject as? (String, PetEntity) else { return }
-            
-            let isSleeping = petEntity.state == .action(action: .init(id: "sleep"), loops: Int.max)
-            
-            if isSleeping {
-                // Wake up the cat
-                if let movement = petEntity.movement {
-                    movement.isEnabled = true
-                }
-                petEntity.resetState()
-                petEntity.resetSpeed()
-                
-                // Re-enable animation scheduler
-                petEntity.capability(for: AnimationsScheduler.self)?.isEnabled = true
-            } else {
-                // Disable any special modes
-                if let wallWalker = petEntity.wallWalker, wallWalker.isWallWalkingEnabled {
-                    wallWalker.toggleWallWalking()
-                }
-                if let mouseChaser = petEntity.capability(for: MouseChaser.self) {
-                    mouseChaser.kill()
-                }
-                
-                // Put the cat to sleep
-                if let movement = petEntity.movement {
-                    movement.isEnabled = false
-                }
-                petEntity.speed = 0
-                petEntity.set(state: .action(action: .init(id: "sleep"), loops: Int.max))
-                
-                // Disable animation scheduler to prevent random animations
-                petEntity.capability(for: AnimationsScheduler.self)?.isEnabled = false
-            }
-            
-            // Update the menu item title
-            if let menuItem = sender.menu?.items.first(where: { $0.action == #selector(toggleSleepMode(_:)) }) {
-                menuItem.title = isSleeping ? "Sleep Mode" : "Wake Up"
-            }
-            
-            // Update other menu items if needed
-            if let mouseItem = sender.menu?.items.first(where: { $0.action == #selector(toggleFollowMouse(_:)) }) {
-                mouseItem.title = "Follow Mouse"
-            }
         }
     }
 #else

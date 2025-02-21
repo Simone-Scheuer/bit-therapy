@@ -239,9 +239,6 @@ class WallWalker: Capability {
         // Kill any mouse chasing if it's enabled
         subject?.capability(for: MouseChaser.self)?.kill()
         
-        // Manage animation scheduler
-        subject?.capability(for: AnimationsScheduler.self)?.isEnabled = !isWallWalkingEnabled
-        
         if isWallWalkingEnabled {
             enableWallWalking()
         } else {
@@ -276,7 +273,26 @@ class WallWalker: Capability {
         // Reset to normal gravity and movement
         currentWall = .floor
         subject.movement?.isEnabled = true
-        subject.setGravity(enabled: true)
+        
+        // Re-enable animation scheduler and ensure it's properly initialized
+        if let scheduler = subject.capability(for: AnimationsScheduler.self) {
+            scheduler.isEnabled = true
+            scheduler.animateNow() // Trigger an immediate animation to restore behavior
+        }
+        
+        // Reset state and movement
+        subject.set(state: .move)
+        // Pick a random direction from an array
+        let randomDirection = [-1.0, 1.0].randomElement() ?? 1.0
+        subject.direction = CGVector(dx: randomDirection, dy: 0) // Random initial direction
+        
+        // Reset speed based on entity type
+        if let petEntity = subject as? PetEntity {
+            petEntity.resetSpeed()
+        } else {
+            // Default speed for non-pet entities
+            subject.speed = 30
+        }
         
         // Reset sprite orientation
         if let rotating = subject.rotation {
@@ -285,9 +301,8 @@ class WallWalker: Capability {
             rotating.isFlippedHorizontally = subject.direction.dx < 0
         }
         
-        // Start falling to floor
-        subject.set(state: .freeFall)
-        subject.direction = Wall.floor.gravityDirection
+        // Re-enable gravity
+        subject.setGravity(enabled: appConfig.gravityEnabled)
     }
     
     private func determineNearestWall() -> Wall {

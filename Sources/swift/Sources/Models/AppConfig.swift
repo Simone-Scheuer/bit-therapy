@@ -34,6 +34,7 @@ class AppConfig: ObservableObject {
     }
 
     @Published var speedMultiplier: CGFloat = 1
+    @Published var animationFrequency: Double = 1.0  // Default to normal frequency
     @Published private(set) var selectedSpecies: [String] = []
 
     init() {
@@ -88,6 +89,7 @@ class AppConfig: ObservableObject {
         randomEvents = storage.randomEvents
         showInMenuBar = storage.showInMenuBar
         floatOverFullscreenApps = storage.floatOverFullscreenApps
+        animationFrequency = storage.animationFrequency
     }
 }
 

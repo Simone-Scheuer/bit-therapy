@@ -16,6 +16,7 @@ protocol AppConfigStorage {
     var selectedSpecies: [String] { get }
     var speedMultiplier: Double { get }
     var showInMenuBar: Bool { get }
+    var animationFrequency: Double { get }
 
     func storeValues(of appConfig: AppConfig)
 }
@@ -36,6 +37,7 @@ class AppConfigStorageImpl: AppConfigStorage {
     @AppStorage("speedMultiplier") var speedMultiplier: Double = 1
     @AppStorage("showInMenuBar") var showInMenuBar: Bool = true
     @AppStorage("floatOverFullscreenApps") var floatOverFullscreenApps: Bool = true
+    @AppStorage("animationFrequency") var animationFrequency: Double = 1.0
 
     var disabledScreens: [String] {
         get {
@@ -127,6 +129,10 @@ class AppConfigStorageImpl: AppConfigStorage {
 
         appConfig.$showInMenuBar
             .sink { [weak self] in self?.showInMenuBar = $0 }
+            .store(in: &disposables)
+
+        appConfig.$animationFrequency
+            .sink { [weak self] in self?.animationFrequency = $0 }
             .store(in: &disposables)
     }
 }
