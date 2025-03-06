@@ -54,7 +54,7 @@
   "capabilities": [
       "AnimatedSprite",
       "CatAnimationsProvider",
-      "AnimationsScheduler",
+      "RandomBehaviorAnimator",
       "AutoRespawn",
       "BounceOnLateralCollisions",
       "Draggable",

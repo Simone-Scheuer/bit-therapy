@@ -7,11 +7,18 @@ class PetEntity: Entity {
 
     private var disposables = Set<AnyCancellable>()
     private var lastDirectionChangeTime: TimeInterval = 0
-    private let minTimeBetweenDirectionChanges: TimeInterval = 3.0  // Minimum time between direction changes
-    private let chanceToChangeDirection: Double = 0.15  // 15% chance to change direction when check occurs
+    private let minTimeBetweenDirectionChanges: TimeInterval = 4.0
+    private let chanceToChangeDirection: Double = 0.08
+    private let directionChangeCheckInterval: TimeInterval = 1.0
     private var directionChangeTimer: Timer?
+    
+    // Add individual size and speed properties
+    private var individualSize: CGFloat
+    private var individualSpeedMultiplier: CGFloat = 1.0
 
     public init(of species: Species, in world: World) {
+        // Initialize with global settings
+        self.individualSize = PetSize.defaultSize
         super.init(
             species: species,
             id: PetEntity.id(for: species),
@@ -24,14 +31,8 @@ class PetEntity: Entity {
         bindGravity()
         bindBounceOffPets()
         
-        // Initialize animation system
-        if let scheduler = capability(for: AnimationsScheduler.self) {
-            scheduler.isEnabled = true
-            // Schedule first animation immediately
-            DispatchQueue.main.async { [weak scheduler] in
-                scheduler?.animateNow()
-            }
-        }
+        // Initialize behavior system
+        install(RandomBehaviorAnimator())
         
         // Start direction change timer
         startDirectionChangeTimer()
@@ -68,35 +69,23 @@ class PetEntity: Entity {
             }
         }
         
-        // Store the previous state for reference
-        let previousState = self.state
-        
         super.set(state: state)
         
         // Post notification about state change
         NotificationCenter.default.post(name: .init("EntityStateChanged"), object: self)
         
-        // Reset speed when changing state (unless it's an animation)
+        // Reset speed when changing to move state
         if case .move = state { 
             resetSpeed() 
-            
-            // If we're coming from an animation, give a chance to trigger another one quickly
-            if case .action = previousState {
-                if let scheduler = capability(for: AnimationsScheduler.self) {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        scheduler.animateNow()
-                    }
-                }
-            }
         }
     }
 
     public func resetSpeed() {
-        // Base speed calculation
+        // Base speed calculation using individual multiplier
         let baseSpeed = PetEntity.speed(
             for: species,
             size: frame.width,
-            settings: settings.speedMultiplier
+            settings: settings.speedMultiplier * individualSpeedMultiplier
         )
         
         // Add slight random variation (-10% to +10%)
@@ -113,8 +102,8 @@ class PetEntity: Entity {
         // Double the speed temporarily
         speed *= 2
         
-        // Reset speed after a random duration (1-3 seconds)
-        let duration = Double.random(in: 1...3)
+        // Reset speed after a random duration (2.5-7.5 seconds)
+        let duration = Double.random(in: 2.5...7.5)
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
             self?.resetSpeed()
         }
@@ -145,10 +134,10 @@ class PetEntity: Entity {
 
     private func startDirectionChangeTimer() {
         // Create a timer that fires every second to check for direction changes
-        directionChangeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        directionChangeTimer = Timer.scheduledTimer(withTimeInterval: directionChangeCheckInterval, repeats: true) { [weak self] _ in
             self?.checkForDirectionChange()
         }
-        directionChangeTimer?.tolerance = 0.1 // Add some tolerance to help with battery life
+        directionChangeTimer?.tolerance = 0.1 // Reduced tolerance for more precise timing
     }
     
     private func checkForDirectionChange() {
@@ -162,16 +151,17 @@ class PetEntity: Entity {
         // Only allow direction change if minimum time has passed
         guard currentTime - lastDirectionChangeTime >= minTimeBetweenDirectionChanges else { return }
         
-        // Random chance to change direction (increased to 30%)
-        if Double.random(in: 0...1) < 0.3 {
+        // 8% chance to change direction per second
+        if Double.random(in: 0...1) < chanceToChangeDirection {
             // Change direction
             direction = CGVector(dx: direction.dx * -1, dy: 0)
             lastDirectionChangeTime = currentTime
             
-            // Give a chance to trigger an animation when changing direction
-            if let scheduler = capability(for: AnimationsScheduler.self) {
+            // Small chance to trigger an animation when changing direction (10% chance)
+            if Double.random(in: 0...1) < 0.1,
+               let randomBehavior = capability(for: RandomBehaviorAnimator.self) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    scheduler.animateNow()
+                    randomBehavior.requestBehavior()
                 }
             }
         }
@@ -206,6 +196,26 @@ class PetEntity: Entity {
             let loopCount = animation.requiredLoops ?? loops
             set(state: .action(action: animation, loops: loopCount))
         }
+    }
+
+    // Add methods to get/set individual properties
+    public func setIndividualSize(_ size: CGFloat) {
+        individualSize = size
+        // Update frame size
+        frame.size = CGSize(square: individualSize * species.scale)
+    }
+    
+    public func getIndividualSize() -> CGFloat {
+        return individualSize
+    }
+    
+    public func setIndividualSpeedMultiplier(_ multiplier: CGFloat) {
+        individualSpeedMultiplier = multiplier
+        resetSpeed()
+    }
+    
+    public func getIndividualSpeedMultiplier() -> CGFloat {
+        return individualSpeedMultiplier
     }
 }
 

@@ -5,8 +5,6 @@ class CatAnimationsProvider: AnimationsProvider {
     @Inject private var settings: AppConfig
     
     private let baseAnimationIds = ["front", "idle", "eat", "sleep"]
-    private var lastAnimationTime: TimeInterval = 0
-    private let minTimeBetweenAnimations: TimeInterval = 2.0  // Even more aggressive!
     
     override func randomAnimation() -> EntityAnimation? {
         guard let subject = subject else {
@@ -24,66 +22,27 @@ class CatAnimationsProvider: AnimationsProvider {
             return nil
         }
         
-        // CRITICAL STATE CHECKS
         // Only block animations in these specific cases
         if case .drag = subject.state { return nil }
         if subject.wallWalker?.isWallWalkingEnabled == true { return nil }
+        if subject.capability(for: MouseChaser.self) != nil { return nil }
         
-        // Allow animations during other states
+        // If we're in an action state, only allow a new animation if it's different
         if case .action(let currentAction, _) = subject.state {
-            // Only block if we're in the middle of the same animation
-            if let nextAnimation = availableAnimations.randomElement(),
-               currentAction.id == nextAnimation.id {
-                return nil
-            }
+            return availableAnimations
+                .filter { $0.id != currentAction.id }
+                .randomElement()
         }
         
-        // OVERRIDE: Super aggressive timing system
-        let currentTime = ProcessInfo.processInfo.systemUptime
-        let timeSinceLastAnimation = currentTime - lastAnimationTime
-        
-        // Force an animation if it's been too long (8 seconds)
-        let shouldForceAnimation = timeSinceLastAnimation > 8.0
-        
-        // Normal timing check but more frequent
-        let adjustedMinTime = minTimeBetweenAnimations / max(0.5, settings.animationFrequency)
-        if !shouldForceAnimation && timeSinceLastAnimation < adjustedMinTime {
-            return nil
-        }
-        
-        // Update last animation time
-        lastAnimationTime = currentTime
-        
-        // OVERRIDE: More aggressive weighting system
+        // Weight-based selection system
         let weights: [(String, Double)] = [
-            ("eat", 0.35),    // 35% chance for eat
-            ("sleep", 0.35),  // 35% chance for sleep
-            ("idle", 0.2),    // 20% chance for idle
-            ("front", 0.1)    // 10% chance for front
+            ("eat", 0.3),    // 30% chance
+            ("sleep", 0.3),  // 30% chance
+            ("idle", 0.25),  // 25% chance
+            ("front", 0.15)  // 15% chance
         ]
         
-        // If forcing an animation, bias heavily towards eat/sleep
-        if shouldForceAnimation {
-            let forcedWeights: [(String, Double)] = [
-                ("eat", 0.5),     // 50% chance for eat when forced
-                ("sleep", 0.5)    // 50% chance for sleep when forced
-            ]
-            
-            // Try to get a forced animation
-            let random = Double.random(in: 0..<1)
-            var cumulative = 0.0
-            
-            for (id, weight) in forcedWeights {
-                cumulative += weight
-                if random < cumulative,
-                   let animation = availableAnimations.first(where: { $0.id == id }) {
-                    Logger.log("CatAnimations", "Forcing \(id) animation")
-                    return animation
-                }
-            }
-        }
-        
-        // Normal weighted selection
+        // Weighted random selection
         let random = Double.random(in: 0..<1)
         var cumulative = 0.0
         
@@ -91,7 +50,7 @@ class CatAnimationsProvider: AnimationsProvider {
             cumulative += weight
             if random < cumulative,
                let animation = availableAnimations.first(where: { $0.id == id }) {
-                Logger.log("CatAnimations", "Playing \(id) animation")
+                Logger.log("CatAnimations", "Selected \(id) animation")
                 return animation
             }
         }

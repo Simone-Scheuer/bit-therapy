@@ -8,6 +8,7 @@ public class AnimationsScheduler: Capability {
     private var isAnimating = false
     private var scheduledAnimationTimer: Timer?
     private var lastAnimationTime: TimeInterval = 0
+    private let minTimeBetweenAnimations: TimeInterval = 3.0
     
     override public func install(on subject: Entity) {
         super.install(on: subject)
@@ -55,13 +56,14 @@ public class AnimationsScheduler: Capability {
             return
         }
         
-        // Allow animations in more states
-        if case .action(let currentAction, _) = subject.state {
-            // Only block if we're in the middle of the same animation
-            if let nextAnimation = subject.animationsProvider?.randomAnimation(),
-               currentAction.id == nextAnimation.id {
-                return
-            }
+        // Check if enough time has passed since last animation
+        let currentTime = ProcessInfo.processInfo.systemUptime
+        let timeSinceLastAnimation = currentTime - lastAnimationTime
+        let adjustedMinTime = minTimeBetweenAnimations / max(0.5, settings.animationFrequency)
+        
+        if timeSinceLastAnimation < adjustedMinTime {
+            Logger.log(Self.logTag, "Too soon for next animation, waiting...")
+            return
         }
         
         // Get a random animation
@@ -70,7 +72,7 @@ public class AnimationsScheduler: Capability {
             return
         }
         
-        let loops = animation.requiredLoops ?? Int.random(in: 3 ... 5)  // Increased minimum loops
+        let loops = animation.requiredLoops ?? Int.random(in: 3 ... 5)
         schedule(animation, times: loops, after: 0)
         Logger.log(Self.logTag, "Immediate animation requested: \(animation.id) x\(loops)")
     }
@@ -85,8 +87,8 @@ public class AnimationsScheduler: Capability {
             return
         }
         
-        // More frequent animations with better frequency adjustment
-        let baseDelay = TimeInterval.random(in: 3 ... 8)  // Reduced delay range
+        // Calculate next animation delay based on frequency setting
+        let baseDelay = TimeInterval.random(in: 5 ... 10)
         let adjustedDelay = baseDelay / max(0.5, settings.animationFrequency)
         
         Logger.log(Self.logTag, "Scheduling next animation in \(adjustedDelay)s")
@@ -99,7 +101,8 @@ public class AnimationsScheduler: Capability {
     
     private func tryAnimation() {
         guard let subject = self.subject,
-              subject.isAlive else {
+              subject.isAlive,
+              isEnabled else {
             scheduleNextAnimation() // Reschedule if not ready
             return
         }
@@ -108,7 +111,7 @@ public class AnimationsScheduler: Capability {
         let currentTime = ProcessInfo.processInfo.systemUptime
         let timeSinceLastAnimation = currentTime - lastAnimationTime
         
-        if timeSinceLastAnimation > 10.0 {  // Force after 10 seconds
+        if timeSinceLastAnimation > 15.0 {  // Force after 15 seconds
             if let animation = subject.animationsProvider?.randomAnimation() {
                 let loops = animation.requiredLoops ?? Int.random(in: 3 ... 5)
                 load(animation, times: loops)
@@ -123,23 +126,11 @@ public class AnimationsScheduler: Capability {
 
     public func schedule(_ animation: EntityAnimation, times: Int, after delay: TimeInterval) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self = self else {
-                Logger.log(Self.logTag, "Cannot schedule - scheduler was deallocated")
-                return
-            }
-            
-            guard let subject = self.subject else {
-                Logger.log(Self.logTag, "Cannot schedule - no subject available")
-                return
-            }
-            
-            guard self.isEnabled else {
-                Logger.log(Self.logTag, "Cannot schedule - scheduler is disabled")
-                return
-            }
-            
-            guard subject.isAlive else {
-                Logger.log(Self.logTag, "Cannot schedule - subject is not alive")
+            guard let self = self,
+                  let subject = self.subject,
+                  self.isEnabled,
+                  subject.isAlive else {
+                Logger.log(Self.logTag, "Cannot schedule - scheduler is disabled or subject unavailable")
                 return
             }
             
@@ -173,11 +164,11 @@ public class AnimationsScheduler: Capability {
         // Ensure the pet stays at its current position
         subject.frame.origin = currentPosition
         
-        // Calculate animation duration (0.5s per loop)
-        let animationDuration = Double(times) * 0.5
+        // Calculate animation duration based on fps and loops
+        let duration = Double(times) / Double(subject.fps)
         
         // Reset state after animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + animationDuration) { [weak self, weak subject] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self, weak subject] in
             guard let subject = subject else { return }
             
             // Re-enable movement
@@ -187,10 +178,10 @@ public class AnimationsScheduler: Capability {
             subject.set(state: .move)
             subject.direction = currentDirection
             
-            // Reset animation flag and schedule next
+            // Reset animation flag and update timing
             self?.isAnimating = false
             self?.lastAnimationTime = ProcessInfo.processInfo.systemUptime
-            self?.scheduleNextAnimation()  // Ensure we schedule the next animation
+            self?.scheduleNextAnimation()
             
             Logger.log(Self.logTag, "Animation completed: \(animation.id)")
         }

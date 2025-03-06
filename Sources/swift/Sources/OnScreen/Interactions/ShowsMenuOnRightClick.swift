@@ -34,11 +34,13 @@ extension Entity {
         @Inject private var onScreen: OnScreenCoordinator
         @Inject private var rainyCloudUseCase: RainyCloudUseCase
         @Inject private var speciesNames: SpeciesNamesRepository
+        @Inject private var settings: AppConfig
         private weak var lastWindow: SomeWindow?
         private var isMenuOpen = false
         private var previousState: EntityState?
         private var previousPosition: CGPoint?
         private var previousSpeed: CGFloat?
+        private var wasGravityEnabled: Bool = true
 
         override func install(on subject: Entity) {
             super.install(on: subject)
@@ -54,6 +56,7 @@ extension Entity {
                 previousState = petEntity.state
                 previousPosition = petEntity.frame.origin
                 previousSpeed = petEntity.speed
+                wasGravityEnabled = settings.gravityEnabled
                 
                 // Lock in place with front animation
                 petEntity.speed = 0
@@ -111,7 +114,9 @@ extension Entity {
                     if let movement = petEntity.movement {
                         movement.isEnabled = true
                     }
-                    petEntity.setGravity(enabled: true)
+                    
+                    // Restore previous gravity state
+                    petEntity.setGravity(enabled: self.wasGravityEnabled && self.settings.gravityEnabled)
                     
                     // Re-enable animation scheduler only if not wall walking
                     if petEntity.wallWalker?.isWallWalkingEnabled != true {
@@ -159,10 +164,10 @@ extension Entity {
                 let (backgroundColor, nameColor): (NSColor, NSColor)
                 switch petEntity.species.id {
                 case "cat_strawberry":
-                    backgroundColor = NSColor(red: 1.0, green: 0.8, blue: 0.9, alpha: 0.15)  // More transparent pink
+                    backgroundColor = NSColor(red: 1.0, green: 0.8, blue: 0.9, alpha: 0.15)
                     nameColor = NSColor(red: 0.9, green: 0.4, blue: 0.6, alpha: 0.9)
                 case "cat_blue":
-                    backgroundColor = NSColor(red: 0.8, green: 0.9, blue: 1.0, alpha: 0.15)  // More transparent blue
+                    backgroundColor = NSColor(red: 0.8, green: 0.9, blue: 1.0, alpha: 0.15)
                     nameColor = NSColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 0.9)
                 default:
                     backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.15)
@@ -189,6 +194,68 @@ extension Entity {
                 menu.addItem(nameItem)
                 menu.addItem(.separator())
                 
+                // Add size submenu
+                let sizeMenu = NSMenu()
+                let sizeItem = NSMenuItem(title: "Size", action: nil, keyEquivalent: "")
+                menu.addItem(sizeItem)
+                menu.setSubmenu(sizeMenu, for: sizeItem)
+                
+                // Add size options
+                let sizes: [(String, CGFloat)] = [
+                    ("Tiny", PetSize.minSize),
+                    ("Small", PetSize.defaultSize * 0.75),
+                    ("Normal", PetSize.defaultSize),
+                    ("Large", PetSize.defaultSize * 1.25),
+                    ("Huge", PetSize.maxSize)
+                ]
+                
+                for (label, size) in sizes {
+                    let item = NSMenuItem(
+                        title: label,
+                        action: #selector(MenuDelegate.setSize(_:)),
+                        keyEquivalent: ""
+                    )
+                    item.target = menuDelegate
+                    item.representedObject = (size, petEntity)
+                    // Add checkmark to current size
+                    if abs(petEntity.getIndividualSize() - size) < 1.0 {
+                        item.state = .on
+                    }
+                    sizeMenu.addItem(item)
+                }
+                
+                // Add speed submenu
+                let speedMenu = NSMenu()
+                let speedItem = NSMenuItem(title: "Speed", action: nil, keyEquivalent: "")
+                menu.addItem(speedItem)
+                menu.setSubmenu(speedMenu, for: speedItem)
+                
+                // Add speed options
+                let speeds: [(String, CGFloat)] = [
+                    ("Very Slow", 0.25),
+                    ("Slow", 0.5),
+                    ("Normal", 1.0),
+                    ("Fast", 1.5),
+                    ("Very Fast", 2.0)
+                ]
+                
+                for (label, multiplier) in speeds {
+                    let item = NSMenuItem(
+                        title: label,
+                        action: #selector(MenuDelegate.setSpeed(_:)),
+                        keyEquivalent: ""
+                    )
+                    item.target = menuDelegate
+                    item.representedObject = (multiplier, petEntity)
+                    // Add checkmark to current speed
+                    if abs(petEntity.getIndividualSpeedMultiplier() - multiplier) < 0.1 {
+                        item.state = .on
+                    }
+                    speedMenu.addItem(item)
+                }
+                
+                menu.addItem(.separator())
+                
                 // Add animations submenu with matching style
                 let animationsMenu = NSMenu()
                 animationsMenu.delegate = menuDelegate
@@ -204,6 +271,10 @@ extension Entity {
                 let animationsItem = NSMenuItem(title: "Animations", action: nil, keyEquivalent: "")
                 menu.addItem(animationsItem)
                 menu.setSubmenu(animationsMenu, for: animationsItem)
+                
+                // Add sleep mode toggle
+                menu.addItem(.separator())
+                menu.addItem(sleepModeItem(for: petEntity))
                 
                 // Disable animations menu if wall walking is enabled
                 if petEntity.wallWalker?.isWallWalkingEnabled == true {
@@ -302,6 +373,19 @@ extension Entity {
                 item.submenu = submenu
             }
             
+            return item
+        }
+
+        private func sleepModeItem(for petEntity: PetEntity) -> NSMenuItem {
+            let isSleeping = petEntity.randomBehavior?.isSleepModeEnabled ?? false
+            let title = isSleeping ? "Wake Up" : "Go to Sleep"
+            let item = NSMenuItem(
+                title: title,
+                action: #selector(MenuDelegate.toggleSleepMode(_:)),
+                keyEquivalent: ""
+            )
+            item.target = menuDelegate
+            item.representedObject = ("", petEntity)
             return item
         }
     }
@@ -440,6 +524,56 @@ extension Entity {
             
             // Update the menu item title
             sender.title = petEntity.wallWalker?.cornerTraversalMenuTitle ?? "Toggle Corner Traversal"
+        }
+
+        @objc func toggleSleepMode(_ sender: NSMenuItem) {
+            guard let (_, petEntity) = sender.representedObject as? (String, PetEntity) else { return }
+            
+            petEntity.randomBehavior?.toggleSleepMode()
+            
+            // Update the menu item title
+            if let menuItem = sender.menu?.items.first(where: { $0.action == #selector(toggleSleepMode(_:)) }) {
+                menuItem.title = (petEntity.randomBehavior?.isSleepModeEnabled ?? false) ? 
+                    "Wake Up" : "Go to Sleep"
+            }
+        }
+
+        @objc func setSize(_ sender: NSMenuItem) {
+            guard let (size, petEntity) = sender.representedObject as? (CGFloat, PetEntity) else { return }
+            
+            // Store current position to maintain it after size change
+            let currentPosition = petEntity.frame.origin
+            
+            // Apply new size
+            petEntity.setIndividualSize(size)
+            
+            // Restore position
+            petEntity.frame.origin = currentPosition
+            
+            // Update menu checkmarks
+            if let menu = sender.menu {
+                menu.items.forEach { item in
+                    if let (itemSize, _) = item.representedObject as? (CGFloat, PetEntity) {
+                        item.state = abs(itemSize - size) < 1.0 ? .on : .off
+                    }
+                }
+            }
+        }
+
+        @objc func setSpeed(_ sender: NSMenuItem) {
+            guard let (multiplier, petEntity) = sender.representedObject as? (CGFloat, PetEntity) else { return }
+            
+            // Apply new speed multiplier
+            petEntity.setIndividualSpeedMultiplier(multiplier)
+            
+            // Update menu checkmarks
+            if let menu = sender.menu {
+                menu.items.forEach { item in
+                    if let (itemMultiplier, _) = item.representedObject as? (CGFloat, PetEntity) {
+                        item.state = abs(itemMultiplier - multiplier) < 0.1 ? .on : .off
+                    }
+                }
+            }
         }
     }
 #else
